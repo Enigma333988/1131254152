@@ -79,6 +79,7 @@ local function collectAll(rootPart, items)
 			touchPart(rootPart, item)
 		end
 	end
+	return balls
 end
 
 local function collectAndDeposit()
