@@ -1,25 +1,20 @@
 -- Roblox LocalScript:
--- 1) reliably collect drops/money via player touch teleports
--- 2) deposit in Put.Zone periodically
+-- 1) every 10s: pull all Wool drops to player, then touch Put.Zone to deposit
+-- 2) continuously: quickly touch Money parts as they appear
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local LOCAL_PLAYER = Players.LocalPlayer
 
-local MONEY_TOUCH_INTERVAL = 0.2
-local DROPS_TOUCH_INTERVAL = 0.35
-local DEPOSIT_INTERVAL = 3
+local WOOL_CYCLE_INTERVAL = 10
+local MONEY_PASS_INTERVAL = 0.05
+local MONEY_TOUCH_HOLD = 0.02
+local MONEY_BATCH_SIZE = 40
 
-local TOUCH_HOLD = 0.035
-local ITEM_TOUCH_OFFSET = Vector3.new(0, 2.6, 0)
-local PUT_TOUCH_OFFSET = Vector3.new(0, 3, 0)
-local MAX_DROPS_PER_CYCLE = 18
-
-local moneyElapsed = 0
-local dropsElapsed = 0
-local depositElapsed = 0
+local WOOL_PULL_OFFSET = Vector3.new(0, 2.5, 0)
+local ZONE_TOUCH_OFFSET = Vector3.new(0, 3, 0)
+local ZONE_TOUCH_HOLD = 0.08
 
 local function getRootPart()
 	local character = LOCAL_PLAYER and LOCAL_PLAYER.Character
@@ -35,6 +30,13 @@ local function getRootPart()
 	return nil
 end
 
+local function touchPosition(rootPart, position, hold)
+	local startCFrame = rootPart.CFrame
+	rootPart.CFrame = CFrame.new(position)
+	task.wait(hold)
+	rootPart.CFrame = startCFrame
+end
+
 local function findTycoonD()
 	local tycoon = Workspace:FindFirstChild("Tycoon")
 	if not tycoon then
@@ -46,9 +48,9 @@ local function findTycoonD()
 		return nil
 	end
 
-	local tycoonD = tycoons:FindFirstChild("D")
-	if tycoonD and tycoonD:IsA("Model") then
-		return tycoonD
+	local d = tycoons:FindFirstChild("D")
+	if d and d:IsA("Model") then
+		return d
 	end
 
 	return nil
@@ -69,12 +71,12 @@ local function getPutZone()
 		return nil
 	end
 
-	local buttons = tycoonD:FindFirstChild("Buttons_E")
-	if not buttons then
+	local buttonsE = tycoonD:FindFirstChild("Buttons_E")
+	if not buttonsE then
 		return nil
 	end
 
-	local put = buttons:FindFirstChild("Put")
+	local put = buttonsE:FindFirstChild("Put")
 	if not put then
 		return nil
 	end
@@ -87,66 +89,39 @@ local function getPutZone()
 	return nil
 end
 
-local function isCollectablePart(instance)
-	return instance:IsA("BasePart") and not instance.Anchored
+local function gatherWoolParts()
+	local result = {}
+	local drops = getDropsRoot()
+	if not drops then
+		return result
+	end
+
+	for _, instance in ipairs(drops:GetDescendants()) do
+		if instance:IsA("BasePart") and instance.Name == "Wool" and not instance.Anchored then
+			table.insert(result, instance)
+		end
+	end
+
+	return result
 end
 
-local function touchTarget(rootPart, position, holdTime)
-	local startCFrame = rootPart.CFrame
-	rootPart.CFrame = CFrame.new(position)
-	task.wait(holdTime)
-	rootPart.CFrame = startCFrame
-end
-
-local function touchMoney()
+local function pullWoolToPlayer()
 	local rootPart = getRootPart()
 	if not rootPart then
 		return
 	end
 
-	local money = Workspace:FindFirstChild("Money")
-	if not money then
-		return
-	end
-
-	if money:IsA("BasePart") then
-		touchTarget(rootPart, money.Position + ITEM_TOUCH_OFFSET, TOUCH_HOLD)
-		return
-	end
-
-	for _, part in ipairs(money:GetDescendants()) do
-		if isCollectablePart(part) then
-			touchTarget(rootPart, part.Position + ITEM_TOUCH_OFFSET, TOUCH_HOLD)
-			break
+	local target = rootPart.Position + WOOL_PULL_OFFSET
+	for _, woolPart in ipairs(gatherWoolParts()) do
+		if woolPart and woolPart.Parent then
+			woolPart.CFrame = CFrame.new(target)
+			woolPart.AssemblyLinearVelocity = Vector3.zero
+			woolPart.AssemblyAngularVelocity = Vector3.zero
 		end
 	end
 end
 
-local function touchDrops()
-	local rootPart = getRootPart()
-	if not rootPart then
-		return
-	end
-
-	local dropsRoot = getDropsRoot()
-	if not dropsRoot then
-		return
-	end
-
-	local touched = 0
-	for _, part in ipairs(dropsRoot:GetDescendants()) do
-		if touched >= MAX_DROPS_PER_CYCLE then
-			break
-		end
-
-		if isCollectablePart(part) then
-			touchTarget(rootPart, part.Position + ITEM_TOUCH_OFFSET, TOUCH_HOLD)
-			touched += 1
-		end
-	end
-end
-
-local function touchPutZone()
+local function depositWoolToTerminal()
 	local rootPart = getRootPart()
 	if not rootPart then
 		return
@@ -157,25 +132,74 @@ local function touchPutZone()
 		return
 	end
 
-	touchTarget(rootPart, zone.Position + PUT_TOUCH_OFFSET, 0.06)
+	touchPosition(rootPart, zone.Position + ZONE_TOUCH_OFFSET, ZONE_TOUCH_HOLD)
 end
 
-RunService.RenderStepped:Connect(function(deltaTime)
-	moneyElapsed += deltaTime
-	if moneyElapsed >= MONEY_TOUCH_INTERVAL then
-		moneyElapsed = 0
-		touchMoney()
+local function gatherMoneyParts()
+	local found = {}
+	local unique = {}
+
+	local rootMoney = Workspace:FindFirstChild("Money")
+	if rootMoney then
+		if rootMoney:IsA("BasePart") then
+			unique[rootMoney] = true
+			table.insert(found, rootMoney)
+		else
+			for _, item in ipairs(rootMoney:GetDescendants()) do
+				if item:IsA("BasePart") and item.Name == "Money" then
+					if not unique[item] then
+						unique[item] = true
+						table.insert(found, item)
+					end
+				end
+			end
+		end
 	end
 
-	dropsElapsed += deltaTime
-	if dropsElapsed >= DROPS_TOUCH_INTERVAL then
-		dropsElapsed = 0
-		touchDrops()
+	for _, item in ipairs(Workspace:GetDescendants()) do
+		if item:IsA("BasePart") and item.Name == "Money" and not unique[item] then
+			unique[item] = true
+			table.insert(found, item)
+		end
 	end
 
-	depositElapsed += deltaTime
-	if depositElapsed >= DEPOSIT_INTERVAL then
-		depositElapsed = 0
-		touchPutZone()
+	return found
+end
+
+local function moneyCollectorLoop()
+	while true do
+		local rootPart = getRootPart()
+		if not rootPart then
+			task.wait(0.2)
+		else
+			local touched = 0
+			for _, moneyPart in ipairs(gatherMoneyParts()) do
+				if not rootPart or not rootPart.Parent then
+					break
+				end
+
+				if moneyPart and moneyPart.Parent and moneyPart:IsA("BasePart") then
+					touchPosition(rootPart, moneyPart.Position + WOOL_PULL_OFFSET, MONEY_TOUCH_HOLD)
+					touched += 1
+				end
+
+				if touched >= MONEY_BATCH_SIZE then
+					break
+				end
+			end
+
+			task.wait(MONEY_PASS_INTERVAL)
+		end
 	end
-end)
+end
+
+local function woolAndDepositLoop()
+	while true do
+		pullWoolToPlayer()
+		depositWoolToTerminal()
+		task.wait(WOOL_CYCLE_INTERVAL)
+	end
+end
+
+task.spawn(moneyCollectorLoop)
+task.spawn(woolAndDepositLoop)
