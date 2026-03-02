@@ -1,27 +1,61 @@
--- Roblox LocalScript: force all monster heads to stay in crosshair locally.
--- Example monster path: Workspace.Monsters.Stalker.Head
--- Place in StarterPlayerScripts.
-
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 
-local CAMERA = Workspace.CurrentCamera
-local MONSTERS_FOLDER = Workspace:WaitForChild("Monsters")
-local CROSSHAIR_DISTANCE = 8
+local MAX_TARGET_DISTANCE = 250
 
-local function placeAllHeadsToCrosshair()
-	local targetCFrame = CAMERA.CFrame + (CAMERA.CFrame.LookVector * CROSSHAIR_DISTANCE)
+local function getEnemyRoot()
+	local zombies = workspace:FindFirstChild("Zombies")
+	if zombies then
+		return zombies
+	end
 
-	for _, monster in ipairs(MONSTERS_FOLDER:GetChildren()) do
-		if monster:IsA("Model") then
-			local head = monster:FindFirstChild("Head")
-			if head and head:IsA("BasePart") then
-				head.CFrame = targetCFrame
-				head.AssemblyLinearVelocity = Vector3.zero
-				head.AssemblyAngularVelocity = Vector3.zero
+	return workspace:FindFirstChild("Monsters")
+end
+
+local function getCharacterHead()
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return nil
+	end
+
+	local root = getEnemyRoot()
+	if not root then
+		return nil
+	end
+
+	local bestHead = nil
+	local bestDistance = math.huge
+	local cameraPos = camera.CFrame.Position
+
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if descendant:IsA("BasePart") and descendant.Name == "Head" and descendant.Parent then
+			local distance = (descendant.Position - cameraPos).Magnitude
+			if distance < bestDistance and distance <= MAX_TARGET_DISTANCE then
+				bestDistance = distance
+				bestHead = descendant
 			end
 		end
 	end
+
+	return bestHead
 end
 
-RunService.RenderStepped:Connect(placeAllHeadsToCrosshair)
+local function applyAimbot()
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	local targetHead = getCharacterHead()
+	if not targetHead then
+		return
+	end
+
+	camera.CFrame = CFrame.new(camera.CFrame.Position, targetHead.Position)
+end
+
+RunService.RenderStepped:Connect(function()
+	local ok = pcall(applyAimbot)
+	if not ok then
+		-- silence runtime overlay spam
+	end
+end)
