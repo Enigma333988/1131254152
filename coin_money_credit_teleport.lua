@@ -1,6 +1,6 @@
 -- Roblox LocalScript:
--- 1) pull drop balls + money to player for quick touch pickup
--- 2) periodically teleport player to Put.Zone to deposit and return
+-- 1) reliably collect drops/money via player touch teleports
+-- 2) deposit in Put.Zone periodically
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,13 +8,17 @@ local Workspace = game:GetService("Workspace")
 
 local LOCAL_PLAYER = Players.LocalPlayer
 
-local COLLECT_INTERVAL = 0.12
+local MONEY_TOUCH_INTERVAL = 0.2
+local DROPS_TOUCH_INTERVAL = 0.35
 local DEPOSIT_INTERVAL = 3
-local PLAYER_PULL_OFFSET = Vector3.new(0, 2.5, 0)
-local PUT_TOUCH_OFFSET = Vector3.new(0, 3, 0)
-local MAX_PARTS_PER_SWEEP = 140
 
-local collectElapsed = 0
+local TOUCH_HOLD = 0.035
+local ITEM_TOUCH_OFFSET = Vector3.new(0, 2.6, 0)
+local PUT_TOUCH_OFFSET = Vector3.new(0, 3, 0)
+local MAX_DROPS_PER_CYCLE = 18
+
+local moneyElapsed = 0
+local dropsElapsed = 0
 local depositElapsed = 0
 
 local function getRootPart()
@@ -84,106 +88,94 @@ local function getPutZone()
 end
 
 local function isCollectablePart(instance)
-	return instance:IsA("BasePart") and not instance.Anchored and instance.CanTouch ~= false
+	return instance:IsA("BasePart") and not instance.Anchored
 end
 
-local function pullPartToPlayer(part, targetPosition)
-	if not part or not part.Parent then
-		return
-	end
-
-	part.CFrame = CFrame.new(targetPosition)
-	part.AssemblyLinearVelocity = Vector3.zero
-	part.AssemblyAngularVelocity = Vector3.zero
+local function touchTarget(rootPart, position, holdTime)
+	local startCFrame = rootPart.CFrame
+	rootPart.CFrame = CFrame.new(position)
+	task.wait(holdTime)
+	rootPart.CFrame = startCFrame
 end
 
-local function collectDropsAndMoney()
+local function touchMoney()
 	local rootPart = getRootPart()
 	if not rootPart then
 		return
 	end
 
-	local pulled = 0
-	local targetPosition = rootPart.Position + PLAYER_PULL_OFFSET
-
-	local dropsRoot = getDropsRoot()
-	if dropsRoot then
-		for _, part in ipairs(dropsRoot:GetDescendants()) do
-			if pulled >= MAX_PARTS_PER_SWEEP then
-				break
-			end
-
-			if isCollectablePart(part) then
-				pullPartToPlayer(part, targetPosition)
-				pulled += 1
-			end
-		end
-	end
-
-	local moneyRoot = Workspace:FindFirstChild("Money")
-	if moneyRoot then
-		if moneyRoot:IsA("BasePart") then
-			pullPartToPlayer(moneyRoot, targetPosition)
-		else
-			for _, part in ipairs(moneyRoot:GetDescendants()) do
-				if pulled >= MAX_PARTS_PER_SWEEP then
-					break
-				end
-
-				if isCollectablePart(part) then
-					pullPartToPlayer(part, targetPosition)
-					pulled += 1
-				end
-			end
-		end
-	end
-
-	return heads
-end
-
-local function magnetHeadsToCrosshair()
-	local camera = Workspace.CurrentCamera
-	if not camera then
+	local money = Workspace:FindFirstChild("Money")
+	if not money then
 		return
 	end
 
-	local targetCFrame = camera.CFrame + (camera.CFrame.LookVector * CROSSHAIR_DISTANCE)
-	for _, head in ipairs(gatherZombieHeads()) do
-		if head and head.Parent then
-			head.CFrame = targetCFrame
-			head.AssemblyLinearVelocity = Vector3.zero
-			head.AssemblyAngularVelocity = Vector3.zero
+	if money:IsA("BasePart") then
+		touchTarget(rootPart, money.Position + ITEM_TOUCH_OFFSET, TOUCH_HOLD)
+		return
+	end
+
+	for _, part in ipairs(money:GetDescendants()) do
+		if isCollectablePart(part) then
+			touchTarget(rootPart, part.Position + ITEM_TOUCH_OFFSET, TOUCH_HOLD)
+			break
 		end
 	end
 end
 
-local function depositToTerminal()
+local function touchDrops()
+	local rootPart = getRootPart()
+	if not rootPart then
+		return
+	end
+
+	local dropsRoot = getDropsRoot()
+	if not dropsRoot then
+		return
+	end
+
+	local touched = 0
+	for _, part in ipairs(dropsRoot:GetDescendants()) do
+		if touched >= MAX_DROPS_PER_CYCLE then
+			break
+		end
+
+		if isCollectablePart(part) then
+			touchTarget(rootPart, part.Position + ITEM_TOUCH_OFFSET, TOUCH_HOLD)
+			touched += 1
+		end
+	end
+end
+
+local function touchPutZone()
+	local rootPart = getRootPart()
+	if not rootPart then
+		return
+	end
+
 	local zone = getPutZone()
 	if not zone then
 		return
 	end
 
-	local rootPart = getRootPart()
-	if not rootPart then
-		return
-	end
-
-	local startCFrame = rootPart.CFrame
-	rootPart.CFrame = CFrame.new(zone.Position + PUT_TOUCH_OFFSET)
-	task.wait(0.07)
-	rootPart.CFrame = startCFrame
+	touchTarget(rootPart, zone.Position + PUT_TOUCH_OFFSET, 0.06)
 end
 
 RunService.RenderStepped:Connect(function(deltaTime)
-	collectElapsed += deltaTime
-	if collectElapsed >= COLLECT_INTERVAL then
-		collectElapsed = 0
-		collectDropsAndMoney()
+	moneyElapsed += deltaTime
+	if moneyElapsed >= MONEY_TOUCH_INTERVAL then
+		moneyElapsed = 0
+		touchMoney()
+	end
+
+	dropsElapsed += deltaTime
+	if dropsElapsed >= DROPS_TOUCH_INTERVAL then
+		dropsElapsed = 0
+		touchDrops()
 	end
 
 	depositElapsed += deltaTime
 	if depositElapsed >= DEPOSIT_INTERVAL then
 		depositElapsed = 0
-		depositToTerminal()
+		touchPutZone()
 	end
 end)
