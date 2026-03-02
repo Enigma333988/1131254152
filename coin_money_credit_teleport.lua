@@ -1,59 +1,58 @@
--- Roblox Lua script: teleport "Coin", "Money", and "Credit" objects to the local character.
--- Place this as a LocalScript (e.g. StarterPlayerScripts).
+-- Roblox LocalScript: on LMB snap aim to the nearest monster head.
+-- Example monster path: Workspace.Monsters.Stalker.Head
+-- Place in StarterPlayerScripts.
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
-local TARGET_NAMES = {
-	Coin = true,
-	Money = true,
-	Credit = true,
-}
+local CAMERA = Workspace.CurrentCamera
+local MONSTERS_FOLDER = Workspace:WaitForChild("Monsters")
 
-local LOCAL_PLAYER = Players.LocalPlayer
-local character = LOCAL_PLAYER.Character or LOCAL_PLAYER.CharacterAdded:Wait()
-
-local function getRootPart(model)
-	return model:FindFirstChild("HumanoidRootPart")
-		or model:FindFirstChild("Torso")
-		or model:FindFirstChild("UpperTorso")
+local function isAliveMonster(model)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	return humanoid and humanoid.Health > 0
 end
 
-local function moveInstanceToCharacter(inst)
-	if not inst or not inst.Parent then
-		return
-	end
+local function getClosestHeadToCrosshair()
+	local viewportCenter = CAMERA.ViewportSize / 2
+	local bestHead = nil
+	local bestScore = math.huge
 
-	local rootPart = getRootPart(character)
-	if not rootPart then
-		return
-	end
-
-	if inst:IsA("BasePart") then
-		inst.CFrame = rootPart.CFrame
-		inst.AssemblyLinearVelocity = Vector3.zero
-		inst.AssemblyAngularVelocity = Vector3.zero
-		return
-	end
-
-	if inst:IsA("Model") then
-		local primary = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart")
-		if primary then
-			inst:PivotTo(rootPart.CFrame)
+	for _, monster in ipairs(MONSTERS_FOLDER:GetChildren()) do
+		if monster:IsA("Model") and isAliveMonster(monster) then
+			local head = monster:FindFirstChild("Head")
+			if head and head:IsA("BasePart") then
+				local screenPoint, onScreen = CAMERA:WorldToViewportPoint(head.Position)
+				if onScreen then
+					local delta = Vector2.new(screenPoint.X, screenPoint.Y) - viewportCenter
+					local score = delta.Magnitude
+					if score < bestScore then
+						bestScore = score
+						bestHead = head
+					end
+				end
+			end
 		end
 	end
+
+	return bestHead
 end
 
-local function onCharacterAdded(newCharacter)
-	character = newCharacter
-end
-
-LOCAL_PLAYER.CharacterAdded:Connect(onCharacterAdded)
-
-RunService.Heartbeat:Connect(function()
-	for _, inst in ipairs(workspace:GetDescendants()) do
-		if TARGET_NAMES[inst.Name] then
-			moveInstanceToCharacter(inst)
-		end
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
 	end
+
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	local head = getClosestHeadToCrosshair()
+	if not head then
+		return
+	end
+
+	local cameraPosition = CAMERA.CFrame.Position
+	CAMERA.CFrame = CFrame.new(cameraPosition, head.Position)
 end)
