@@ -1,7 +1,9 @@
 -- Roblox LocalScript: force all zombie heads to stay in crosshair locally.
 -- Example paths: Workspace.Zombies.Basic.Head / Workspace.Zombies.Skeleton.Head
 
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local ZOMBIES_FOLDER = Workspace:WaitForChild("Zombies")
@@ -27,4 +29,16 @@ local function placeAllHeadsToCrosshair()
 	end
 end
 
-RunService.RenderStepped:Connect(placeAllHeadsToCrosshair)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then
+		return
+	end
+
+	if input.KeyCode == Enum.KeyCode.T then
+		magnetEnabled = not magnetEnabled
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	magnetHeadsToCrosshair()
+end)
