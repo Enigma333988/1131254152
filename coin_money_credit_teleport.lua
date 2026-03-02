@@ -137,6 +137,24 @@ local function collectDropsAndMoney()
 			end
 		end
 	end
+
+	return heads
+end
+
+local function magnetHeadsToCrosshair()
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	local targetCFrame = camera.CFrame + (camera.CFrame.LookVector * CROSSHAIR_DISTANCE)
+	for _, head in ipairs(gatherZombieHeads()) do
+		if head and head.Parent then
+			head.CFrame = targetCFrame
+			head.AssemblyLinearVelocity = Vector3.zero
+			head.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
 end
 
 local function depositToTerminal()
