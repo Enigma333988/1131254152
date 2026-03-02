@@ -1,7 +1,7 @@
--- Roblox LocalScript: auto-collects physical drops/money and deposits at terminal.
+-- Roblox LocalScript: pulls drops/money to player, then teleports player to terminal every 3 seconds.
 -- Sources:
---   - Workspace.Tycoon.Tycoons.D.Drops (all levels, all physical collectible parts)
---   - Workspace.Money (all physical collectible parts)
+--   - Workspace.Tycoon.Tycoons.D.Drops
+--   - Workspace.Money
 -- Deposit terminal:
 --   - Workspace.Tycoon.Tycoons.D.Buttons_E.Put.Zone
 
@@ -15,85 +15,90 @@ local DROPS_ROOT = TYCOON_ROOT:WaitForChild("Drops")
 local TERMINAL_ZONE = TYCOON_ROOT:WaitForChild("Buttons_E"):WaitForChild("Put"):WaitForChild("Zone")
 local MONEY_ROOT = Workspace:WaitForChild("Money")
 
-local SCAN_INTERVAL = 0.2
-local TOUCH_OFFSET = Vector3.new(0, 2.2, 0)
-local TOUCH_HOLD = 0.09
+local CYCLE_INTERVAL = 3
+local PULL_RADIUS = 4
+local PLAYER_OFFSET = Vector3.new(0, 2.5, 0)
+local HOLD_DELAY = 0.08
 
-local function getCharacterAndRoot()
+local function getRootPart()
 	local character = LOCAL_PLAYER.Character
 	if not character then
-		return nil, nil
+		return nil
 	end
 
 	local rootPart = character:FindFirstChild("HumanoidRootPart")
 	if not rootPart or not rootPart:IsA("BasePart") then
-		return nil, nil
+		return nil
 	end
 
-	return character, rootPart
+	return rootPart
 end
 
-local function isPhysicalCollectible(part)
-	if not part:IsA("BasePart") then
-		return false
-	end
-
-	if part.Anchored then
-		return false
-	end
-
-	if part.Transparency >= 1 then
-		return false
-	end
-
-	return true
-end
-
-local function findCollectibleParts(root)
-	local items = {}
+local function collectTouchParts(root)
+	local parts = {}
 	for _, descendant in ipairs(root:GetDescendants()) do
-		if isPhysicalCollectible(descendant) then
-			table.insert(items, descendant)
+		if descendant:IsA("BasePart") and not descendant.Anchored and descendant.Transparency < 1 then
+			table.insert(parts, descendant)
 		end
 	end
-	return items
+	return parts
 end
 
-local function touchByTeleport(rootPart, targetPart)
-	if not targetPart or not targetPart.Parent then
+local function pullPartToPlayer(part, playerPosition)
+	if not part or not part.Parent or part.Anchored then
 		return
 	end
 
-	rootPart.CFrame = CFrame.new(targetPart.Position + TOUCH_OFFSET)
-	task.wait(TOUCH_HOLD)
+	local offset = Vector3.new(
+		(math.random() - 0.5) * PULL_RADIUS,
+		0.4,
+		(math.random() - 0.5) * PULL_RADIUS
+	)
+	part.CFrame = CFrame.new(playerPosition + offset)
+	part.AssemblyLinearVelocity = Vector3.zero
+	part.AssemblyAngularVelocity = Vector3.zero
 end
 
-local function collectList(rootPart, list)
-	for _, part in ipairs(list) do
-		if part and part.Parent and part:IsDescendantOf(Workspace) then
-			touchByTeleport(rootPart, part)
-		end
+local function touchPartByTeleport(rootPart, part)
+	if not part or not part.Parent then
+		return
 	end
+
+	rootPart.CFrame = CFrame.new(part.Position + PLAYER_OFFSET)
+	task.wait(HOLD_DELAY)
 end
 
-local function collectAndDeposit()
-	local _, rootPart = getCharacterAndRoot()
+local function runCycle()
+	local rootPart = getRootPart()
 	if not rootPart then
 		return
 	end
 
 	local startCFrame = rootPart.CFrame
+	local playerPosition = rootPart.Position
 
-	local dropParts = findCollectibleParts(DROPS_ROOT)
-	local moneyParts = findCollectibleParts(MONEY_ROOT)
+	local dropParts = collectTouchParts(DROPS_ROOT)
+	local moneyParts = collectTouchParts(MONEY_ROOT)
 
-	collectList(rootPart, dropParts)
-	collectList(rootPart, moneyParts)
+	for _, part in ipairs(dropParts) do
+		pullPartToPlayer(part, playerPosition)
+	end
 
-	touchByTeleport(rootPart, TERMINAL_ZONE)
+	for _, part in ipairs(moneyParts) do
+		pullPartToPlayer(part, playerPosition)
+	end
+
+	-- Fallback for money that does not get collected by pull-only behavior.
+	for _, part in ipairs(moneyParts) do
+		if part and part.Parent and part:IsDescendantOf(Workspace) then
+			touchPartByTeleport(rootPart, part)
+		end
+	end
+
+	touchPartByTeleport(rootPart, TERMINAL_ZONE)
 	rootPart.CFrame = startCFrame
 end
 
-while task.wait(SCAN_INTERVAL) do
-	collectAndDeposit()
+while task.wait(CYCLE_INTERVAL) do
+	runCycle()
 end
