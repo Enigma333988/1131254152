@@ -1,27 +1,58 @@
--- Roblox LocalScript: force all monster heads to stay in crosshair locally.
--- Example monster path: Workspace.Monsters.Stalker.Head
--- Place in StarterPlayerScripts.
-
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
 
-local CAMERA = Workspace.CurrentCamera
-local MONSTERS_FOLDER = Workspace:WaitForChild("Monsters")
 local CROSSHAIR_DISTANCE = 8
 
-local function placeAllHeadsToCrosshair()
-	local targetCFrame = CAMERA.CFrame + (CAMERA.CFrame.LookVector * CROSSHAIR_DISTANCE)
+local function getZombieRoot()
+	local world = workspace
+	local zombies = world:FindFirstChild("Zombies")
+	if zombies then
+		return zombies
+	end
 
-	for _, monster in ipairs(MONSTERS_FOLDER:GetChildren()) do
-		if monster:IsA("Model") then
-			local head = monster:FindFirstChild("Head")
-			if head and head:IsA("BasePart") then
-				head.CFrame = targetCFrame
-				head.AssemblyLinearVelocity = Vector3.zero
-				head.AssemblyAngularVelocity = Vector3.zero
-			end
+	return world:FindFirstChild("Monsters")
+end
+
+local function isHeadPart(instance)
+	if not instance then
+		return false
+	end
+
+	if not instance:IsA("BasePart") then
+		return false
+	end
+
+	if instance.Name ~= "Head" then
+		return false
+	end
+
+	return instance.Parent ~= nil
+end
+
+local function magnetHeadsToCrosshair()
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+
+	local zombiesRoot = getZombieRoot()
+	if not zombiesRoot then
+		return
+	end
+
+	local targetCFrame = camera.CFrame + (camera.CFrame.LookVector * CROSSHAIR_DISTANCE)
+
+	for _, descendant in ipairs(zombiesRoot:GetDescendants()) do
+		if isHeadPart(descendant) then
+			descendant.CFrame = targetCFrame
+			descendant.AssemblyLinearVelocity = Vector3.zero
+			descendant.AssemblyAngularVelocity = Vector3.zero
 		end
 	end
 end
 
-RunService.RenderStepped:Connect(placeAllHeadsToCrosshair)
+RunService.RenderStepped:Connect(function()
+	local ok = pcall(magnetHeadsToCrosshair)
+	if not ok then
+		-- keep silent to avoid error spam in executor overlays
+	end
+end)
