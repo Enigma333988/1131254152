@@ -1,7 +1,9 @@
--- Roblox LocalScript: auto-collects drops/money and deposits wool into terminal with minimal visible teleport.
--- Wool source root: Workspace.Tycoon.Tycoons.D.Drops (all levels)
--- Deposit terminal: Workspace.Tycoon.Tycoons.D.Buttons_E.Put.Zone
--- Money source: Workspace.Money
+-- Roblox LocalScript: auto-collects physical drops/money and deposits at terminal.
+-- Sources:
+--   - Workspace.Tycoon.Tycoons.D.Drops (all levels, all physical collectible parts)
+--   - Workspace.Money (all physical collectible parts)
+-- Deposit terminal:
+--   - Workspace.Tycoon.Tycoons.D.Buttons_E.Put.Zone
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -14,89 +16,82 @@ local TERMINAL_ZONE = TYCOON_ROOT:WaitForChild("Buttons_E"):WaitForChild("Put"):
 local MONEY_ROOT = Workspace:WaitForChild("Money")
 
 local SCAN_INTERVAL = 0.2
-local TOUCH_STEP_DELAY = 0.02
-local WOOL_NAME = "Wool"
+local TOUCH_OFFSET = Vector3.new(0, 2.2, 0)
+local TOUCH_HOLD = 0.09
 
-local function getCharacterRoot()
+local function getCharacterAndRoot()
 	local character = LOCAL_PLAYER.Character
 	if not character then
-		return nil
+		return nil, nil
 	end
 
 	local rootPart = character:FindFirstChild("HumanoidRootPart")
 	if not rootPart or not rootPart:IsA("BasePart") then
-		return nil
+		return nil, nil
 	end
 
-	return rootPart
+	return character, rootPart
 end
 
-local function isCollectibleWool(instance)
-	return instance:IsA("BasePart")
-		and instance.Name == WOOL_NAME
-		and not instance.Anchored
-		and instance:IsDescendantOf(DROPS_ROOT)
+local function isPhysicalCollectible(part)
+	if not part:IsA("BasePart") then
+		return false
+	end
+
+	if part.Anchored then
+		return false
+	end
+
+	if part.Transparency >= 1 then
+		return false
+	end
+
+	return true
 end
 
-local function isCollectibleMoney(instance)
-	return instance:IsA("BasePart")
-		and not instance.Anchored
-		and instance:IsDescendantOf(MONEY_ROOT)
+local function findCollectibleParts(root)
+	local items = {}
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if isPhysicalCollectible(descendant) then
+			table.insert(items, descendant)
+		end
+	end
+	return items
 end
 
-local function touchPart(rootPart, targetPart)
+local function touchByTeleport(rootPart, targetPart)
 	if not targetPart or not targetPart.Parent then
 		return
 	end
 
-	local fireTouch = firetouchinterest
-	if typeof(fireTouch) == "function" then
-		fireTouch(rootPart, targetPart, 0)
-		fireTouch(rootPart, targetPart, 1)
-		task.wait(TOUCH_STEP_DELAY)
-		return
-	end
-
-	local startCFrame = rootPart.CFrame
-	rootPart.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 2.2, 0))
-	task.wait(TOUCH_STEP_DELAY)
-	rootPart.CFrame = startCFrame
+	rootPart.CFrame = CFrame.new(targetPart.Position + TOUCH_OFFSET)
+	task.wait(TOUCH_HOLD)
 end
 
-local function findCollectibles(root, predicate)
-	local parts = {}
-	for _, descendant in ipairs(root:GetDescendants()) do
-		if predicate(descendant) then
-			table.insert(parts, descendant)
+local function collectList(rootPart, list)
+	for _, part in ipairs(list) do
+		if part and part.Parent and part:IsDescendantOf(Workspace) then
+			touchByTeleport(rootPart, part)
 		end
 	end
-	return parts
-end
-
-local function collectAll(rootPart, items)
-	for _, item in ipairs(items) do
-		if item and item.Parent and item:IsDescendantOf(Workspace) then
-			touchPart(rootPart, item)
-		end
-	end
-	return balls
 end
 
 local function collectAndDeposit()
-	local rootPart = getCharacterRoot()
+	local _, rootPart = getCharacterAndRoot()
 	if not rootPart then
 		return
 	end
 
-	local woolParts = findCollectibles(DROPS_ROOT, isCollectibleWool)
-	local moneyParts = findCollectibles(MONEY_ROOT, isCollectibleMoney)
+	local startCFrame = rootPart.CFrame
 
-	collectAll(rootPart, woolParts)
-	collectAll(rootPart, moneyParts)
+	local dropParts = findCollectibleParts(DROPS_ROOT)
+	local moneyParts = findCollectibleParts(MONEY_ROOT)
 
-	if TERMINAL_ZONE and TERMINAL_ZONE.Parent then
-		touchPart(rootPart, TERMINAL_ZONE)
-	end
+	collectList(rootPart, dropParts)
+	collectList(rootPart, moneyParts)
+
+	touchByTeleport(rootPart, TERMINAL_ZONE)
+	rootPart.CFrame = startCFrame
 end
 
 while task.wait(SCAN_INTERVAL) do
