@@ -1,6 +1,6 @@
--- Roblox LocalScript (safe mode):
--- 1) magnet zombie head(s) to crosshair
--- 2) touch Workspace.Money periodically
+-- Roblox LocalScript:
+-- 1) pull drop balls + money to player for quick touch pickup
+-- 2) periodically teleport player to Put.Zone to deposit and return
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -8,12 +8,14 @@ local Workspace = game:GetService("Workspace")
 
 local LOCAL_PLAYER = Players.LocalPlayer
 
-local CROSSHAIR_DISTANCE = 8
-local MONEY_TOUCH_INTERVAL = 3
-local MONEY_TOUCH_HOLD = 0.1
-local MONEY_OFFSET = Vector3.new(0, 2.5, 0)
+local COLLECT_INTERVAL = 0.12
+local DEPOSIT_INTERVAL = 3
+local PLAYER_PULL_OFFSET = Vector3.new(0, 2.5, 0)
+local PUT_TOUCH_OFFSET = Vector3.new(0, 3, 0)
+local MAX_PARTS_PER_SWEEP = 140
 
-local elapsed = 0
+local collectElapsed = 0
+local depositElapsed = 0
 
 local function getRootPart()
 	local character = LOCAL_PLAYER and LOCAL_PLAYER.Character
@@ -40,32 +42,98 @@ local function findTycoonD()
 		return nil
 	end
 
-	return tycoons:FindFirstChild("D")
-end
-
-local function gatherZombieHeads()
-	local heads = {}
-	local tycoonD = findTycoonD()
-	if not tycoonD then
-		return heads
+	local tycoonD = tycoons:FindFirstChild("D")
+	if tycoonD and tycoonD:IsA("Model") then
+		return tycoonD
 	end
 
-	local round = tycoonD:FindFirstChild("Round")
-	if round then
-		local zombie = round:FindFirstChild("Zombie")
-		if zombie then
-			local head = zombie:FindFirstChild("Head")
-			if head and head:IsA("BasePart") then
-				table.insert(heads, head)
+	return nil
+end
+
+local function getDropsRoot()
+	local tycoonD = findTycoonD()
+	if not tycoonD then
+		return nil
+	end
+
+	return tycoonD:FindFirstChild("Drops")
+end
+
+local function getPutZone()
+	local tycoonD = findTycoonD()
+	if not tycoonD then
+		return nil
+	end
+
+	local buttons = tycoonD:FindFirstChild("Buttons_E")
+	if not buttons then
+		return nil
+	end
+
+	local put = buttons:FindFirstChild("Put")
+	if not put then
+		return nil
+	end
+
+	local zone = put:FindFirstChild("Zone")
+	if zone and zone:IsA("BasePart") then
+		return zone
+	end
+
+	return nil
+end
+
+local function isCollectablePart(instance)
+	return instance:IsA("BasePart") and not instance.Anchored and instance.CanTouch ~= false
+end
+
+local function pullPartToPlayer(part, targetPosition)
+	if not part or not part.Parent then
+		return
+	end
+
+	part.CFrame = CFrame.new(targetPosition)
+	part.AssemblyLinearVelocity = Vector3.zero
+	part.AssemblyAngularVelocity = Vector3.zero
+end
+
+local function collectDropsAndMoney()
+	local rootPart = getRootPart()
+	if not rootPart then
+		return
+	end
+
+	local pulled = 0
+	local targetPosition = rootPart.Position + PLAYER_PULL_OFFSET
+
+	local dropsRoot = getDropsRoot()
+	if dropsRoot then
+		for _, part in ipairs(dropsRoot:GetDescendants()) do
+			if pulled >= MAX_PARTS_PER_SWEEP then
+				break
+			end
+
+			if isCollectablePart(part) then
+				pullPartToPlayer(part, targetPosition)
+				pulled += 1
 			end
 		end
 	end
 
-	for _, descendant in ipairs(tycoonD:GetDescendants()) do
-		if descendant:IsA("BasePart") and descendant.Name == "Head" then
-			local parentModel = descendant.Parent
-			if parentModel and parentModel:IsA("Model") and parentModel.Name == "Zombie" then
-				table.insert(heads, descendant)
+	local moneyRoot = Workspace:FindFirstChild("Money")
+	if moneyRoot then
+		if moneyRoot:IsA("BasePart") then
+			pullPartToPlayer(moneyRoot, targetPosition)
+		else
+			for _, part in ipairs(moneyRoot:GetDescendants()) do
+				if pulled >= MAX_PARTS_PER_SWEEP then
+					break
+				end
+
+				if isCollectablePart(part) then
+					pullPartToPlayer(part, targetPosition)
+					pulled += 1
+				end
 			end
 		end
 	end
@@ -89,9 +157,9 @@ local function magnetHeadsToCrosshair()
 	end
 end
 
-local function touchMoneyPart()
-	local moneyPart = Workspace:FindFirstChild("Money")
-	if not moneyPart or not moneyPart:IsA("BasePart") then
+local function depositToTerminal()
+	local zone = getPutZone()
+	if not zone then
 		return
 	end
 
@@ -101,17 +169,21 @@ local function touchMoneyPart()
 	end
 
 	local startCFrame = rootPart.CFrame
-	rootPart.CFrame = CFrame.new(moneyPart.Position + MONEY_OFFSET)
-	task.wait(MONEY_TOUCH_HOLD)
+	rootPart.CFrame = CFrame.new(zone.Position + PUT_TOUCH_OFFSET)
+	task.wait(0.07)
 	rootPart.CFrame = startCFrame
 end
 
 RunService.RenderStepped:Connect(function(deltaTime)
-	magnetHeadsToCrosshair()
+	collectElapsed += deltaTime
+	if collectElapsed >= COLLECT_INTERVAL then
+		collectElapsed = 0
+		collectDropsAndMoney()
+	end
 
-	elapsed += deltaTime
-	if elapsed >= MONEY_TOUCH_INTERVAL then
-		elapsed = 0
-		touchMoneyPart()
+	depositElapsed += deltaTime
+	if depositElapsed >= DEPOSIT_INTERVAL then
+		depositElapsed = 0
+		depositToTerminal()
 	end
 end)
