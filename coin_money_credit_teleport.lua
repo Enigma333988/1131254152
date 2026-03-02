@@ -1,6 +1,7 @@
--- Roblox LocalScript: auto-collects all dropped wool balls and deposits them into terminal.
--- Collect source root: Workspace.Tycoon.Tycoons.D.Drops (all levels)
+-- Roblox LocalScript: auto-collects drops/money and deposits wool into terminal with minimal visible teleport.
+-- Wool source root: Workspace.Tycoon.Tycoons.D.Drops (all levels)
 -- Deposit terminal: Workspace.Tycoon.Tycoons.D.Buttons_E.Put.Zone
+-- Money source: Workspace.Money
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
@@ -10,10 +11,11 @@ local LOCAL_PLAYER = Players.LocalPlayer
 local TYCOON_ROOT = Workspace:WaitForChild("Tycoon"):WaitForChild("Tycoons"):WaitForChild("D")
 local DROPS_ROOT = TYCOON_ROOT:WaitForChild("Drops")
 local TERMINAL_ZONE = TYCOON_ROOT:WaitForChild("Buttons_E"):WaitForChild("Put"):WaitForChild("Zone")
+local MONEY_ROOT = Workspace:WaitForChild("Money")
 
 local SCAN_INTERVAL = 0.2
-local TOUCH_STEP_DELAY = 0.03
-local BALL_NAME = "Wool"
+local TOUCH_STEP_DELAY = 0.02
+local WOOL_NAME = "Wool"
 
 local function getCharacterRoot()
 	local character = LOCAL_PLAYER.Character
@@ -29,39 +31,55 @@ local function getCharacterRoot()
 	return rootPart
 end
 
-local function isCollectibleBall(instance)
-	if not instance:IsA("BasePart") then
-		return false
-	end
-
-	if instance.Name ~= BALL_NAME then
-		return false
-	end
-
-	if instance.Anchored then
-		return false
-	end
-
-	if not instance:IsDescendantOf(DROPS_ROOT) then
-		return false
-	end
-
-	return true
+local function isCollectibleWool(instance)
+	return instance:IsA("BasePart")
+		and instance.Name == WOOL_NAME
+		and not instance.Anchored
+		and instance:IsDescendantOf(DROPS_ROOT)
 end
 
-local function findAllBalls()
-	local balls = {}
-	for _, descendant in ipairs(DROPS_ROOT:GetDescendants()) do
-		if isCollectibleBall(descendant) then
-			table.insert(balls, descendant)
+local function isCollectibleMoney(instance)
+	return instance:IsA("BasePart")
+		and not instance.Anchored
+		and instance:IsDescendantOf(MONEY_ROOT)
+end
+
+local function touchPart(rootPart, targetPart)
+	if not targetPart or not targetPart.Parent then
+		return
+	end
+
+	local fireTouch = firetouchinterest
+	if typeof(fireTouch) == "function" then
+		fireTouch(rootPart, targetPart, 0)
+		fireTouch(rootPart, targetPart, 1)
+		task.wait(TOUCH_STEP_DELAY)
+		return
+	end
+
+	local startCFrame = rootPart.CFrame
+	rootPart.CFrame = CFrame.new(targetPart.Position + Vector3.new(0, 2.2, 0))
+	task.wait(TOUCH_STEP_DELAY)
+	rootPart.CFrame = startCFrame
+end
+
+local function findCollectibles(root, predicate)
+	local parts = {}
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if predicate(descendant) then
+			table.insert(parts, descendant)
+		end
+	end
+	return parts
+end
+
+local function collectAll(rootPart, items)
+	for _, item in ipairs(items) do
+		if item and item.Parent and item:IsDescendantOf(Workspace) then
+			touchPart(rootPart, item)
 		end
 	end
 	return balls
-end
-
-local function touchPosition(rootPart, position)
-	rootPart.CFrame = CFrame.new(position + Vector3.new(0, 2.2, 0))
-	task.wait(TOUCH_STEP_DELAY)
 end
 
 local function collectAndDeposit()
@@ -70,17 +88,15 @@ local function collectAndDeposit()
 		return
 	end
 
-	local startCFrame = rootPart.CFrame
-	local balls = findAllBalls()
+	local woolParts = findCollectibles(DROPS_ROOT, isCollectibleWool)
+	local moneyParts = findCollectibles(MONEY_ROOT, isCollectibleMoney)
 
-	for _, ball in ipairs(balls) do
-		if ball.Parent and ball:IsDescendantOf(Workspace) then
-			touchPosition(rootPart, ball.Position)
-		end
+	collectAll(rootPart, woolParts)
+	collectAll(rootPart, moneyParts)
+
+	if TERMINAL_ZONE and TERMINAL_ZONE.Parent then
+		touchPart(rootPart, TERMINAL_ZONE)
 	end
-
-	touchPosition(rootPart, TERMINAL_ZONE.Position)
-	rootPart.CFrame = startCFrame
 end
 
 while task.wait(SCAN_INTERVAL) do
