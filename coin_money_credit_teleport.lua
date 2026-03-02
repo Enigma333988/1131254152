@@ -1,44 +1,58 @@
--- Roblox LocalScript: force all zombie heads to stay in crosshair locally.
--- Example paths: Workspace.Zombies.Basic.Head / Workspace.Zombies.Skeleton.Head
-
-local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local Workspace = game:GetService("Workspace")
 
-local ZOMBIES_FOLDER = Workspace:WaitForChild("Zombies")
 local CROSSHAIR_DISTANCE = 8
 
-local function placeAllHeadsToCrosshair()
-	local camera = Workspace.CurrentCamera
+local function getZombieRoot()
+	local world = workspace
+	local zombies = world:FindFirstChild("Zombies")
+	if zombies then
+		return zombies
+	end
+
+	return world:FindFirstChild("Monsters")
+end
+
+local function isHeadPart(instance)
+	if not instance then
+		return false
+	end
+
+	if not instance:IsA("BasePart") then
+		return false
+	end
+
+	if instance.Name ~= "Head" then
+		return false
+	end
+
+	return instance.Parent ~= nil
+end
+
+local function magnetHeadsToCrosshair()
+	local camera = workspace.CurrentCamera
 	if not camera then
+		return
+	end
+
+	local zombiesRoot = getZombieRoot()
+	if not zombiesRoot then
 		return
 	end
 
 	local targetCFrame = camera.CFrame + (camera.CFrame.LookVector * CROSSHAIR_DISTANCE)
 
-	for _, zombie in ipairs(ZOMBIES_FOLDER:GetChildren()) do
-		if zombie:IsA("Model") then
-			local head = zombie:FindFirstChild("Head")
-			if head and head:IsA("BasePart") then
-				head.CFrame = targetCFrame
-				head.AssemblyLinearVelocity = Vector3.zero
-				head.AssemblyAngularVelocity = Vector3.zero
-			end
+	for _, descendant in ipairs(zombiesRoot:GetDescendants()) do
+		if isHeadPart(descendant) then
+			descendant.CFrame = targetCFrame
+			descendant.AssemblyLinearVelocity = Vector3.zero
+			descendant.AssemblyAngularVelocity = Vector3.zero
 		end
 	end
 end
 
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then
-		return
-	end
-
-	if input.KeyCode == Enum.KeyCode.T then
-		magnetEnabled = not magnetEnabled
-	end
-end)
-
 RunService.RenderStepped:Connect(function()
-	magnetHeadsToCrosshair()
+	local ok = pcall(magnetHeadsToCrosshair)
+	if not ok then
+		-- keep silent to avoid error spam in executor overlays
+	end
 end)
