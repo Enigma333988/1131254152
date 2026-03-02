@@ -1,20 +1,23 @@
--- Roblox LocalScript: force all monster heads to stay in crosshair locally.
--- Example monster path: Workspace.Monsters.Stalker.Head
--- Place in StarterPlayerScripts.
+-- Roblox LocalScript: force all zombie heads to stay in crosshair locally.
+-- Example paths: Workspace.Zombies.Basic.Head / Workspace.Zombies.Skeleton.Head
 
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local CAMERA = Workspace.CurrentCamera
-local MONSTERS_FOLDER = Workspace:WaitForChild("Monsters")
+local ZOMBIES_FOLDER = Workspace:WaitForChild("Zombies")
 local CROSSHAIR_DISTANCE = 8
 
 local function placeAllHeadsToCrosshair()
-	local targetCFrame = CAMERA.CFrame + (CAMERA.CFrame.LookVector * CROSSHAIR_DISTANCE)
+	local camera = Workspace.CurrentCamera
+	if not camera then
+		return
+	end
 
-	for _, monster in ipairs(MONSTERS_FOLDER:GetChildren()) do
-		if monster:IsA("Model") then
-			local head = monster:FindFirstChild("Head")
+	local targetCFrame = camera.CFrame + (camera.CFrame.LookVector * CROSSHAIR_DISTANCE)
+
+	for _, zombie in ipairs(ZOMBIES_FOLDER:GetChildren()) do
+		if zombie:IsA("Model") then
+			local head = zombie:FindFirstChild("Head")
 			if head and head:IsA("BasePart") then
 				head.CFrame = targetCFrame
 				head.AssemblyLinearVelocity = Vector3.zero
