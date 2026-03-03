@@ -12,8 +12,9 @@ local camera = Workspace.CurrentCamera
 local SETTINGS = {
     Enabled = true,
     ToggleKey = Enum.KeyCode.T,
-    DistanceFromCamera = 8, -- studs in front of crosshair
-    DistanceFromCharacter = 21, -- keep targets farther from your character
+    DistanceFromCamera = 16, -- studs in front of crosshair
+    DistanceFromCharacter = 21, -- keep enemy targets farther from your character
+    LootOffsetFromCharacter = Vector3.new(0, 0, 0), -- teleport loot into/near character body
     MaxTargetsPerFrame = 100,
     MaxLootPerFrame = 100,
     PreferredPartNames = { "HumanoidRootPart", "Head", "Torso", "UpperTorso", "LowerTorso" },
@@ -75,7 +76,7 @@ local function getTargetPart(enemyModel)
     return enemyModel:FindFirstChildWhichIsA("BasePart")
 end
 
-local function getMagnetCFrame()
+local function getEnemyMagnetCFrame()
     if not camera then
         camera = Workspace.CurrentCamera
     end
@@ -95,12 +96,24 @@ local function getMagnetCFrame()
         targetPos = charTarget
     end
 
-    -- Face targets toward the player/camera so they stand "front-first".
+    -- Face enemy targets toward the player/camera so they stand "front-first".
     return CFrame.new(targetPos, targetPos - lookVector)
 end
 
+local function getLootCollectCFrame()
+    local rootPart = getCharacterRootPart()
+    if not rootPart then
+        return nil
+    end
+
+    local targetPos = rootPart.Position + SETTINGS.LootOffsetFromCharacter
+    local lookVector = rootPart.CFrame.LookVector
+
+    return CFrame.new(targetPos, targetPos + lookVector)
+end
+
 local function movePartToMagnet(part, magnetCF)
-    if not part or not part:IsA("BasePart") then
+    if not part or not part:IsA("BasePart") or not magnetCF then
         return false
     end
 
@@ -128,39 +141,41 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    local magnetCF = getMagnetCFrame()
-    if not magnetCF then
-        return
-    end
+    local enemyMagnetCF = getEnemyMagnetCFrame()
 
-    local enemiesFolder = getEnemiesFolder()
-    if enemiesFolder then
-        local movedTargets = 0
+    if enemyMagnetCF then
+        local enemiesFolder = getEnemiesFolder()
+        if enemiesFolder then
+            local movedTargets = 0
 
-        for _, enemy in ipairs(enemiesFolder:GetChildren()) do
-            if movedTargets >= SETTINGS.MaxTargetsPerFrame then
-                break
-            end
+            for _, enemy in ipairs(enemiesFolder:GetChildren()) do
+                if movedTargets >= SETTINGS.MaxTargetsPerFrame then
+                    break
+                end
 
-            local targetPart = getTargetPart(enemy)
-            if movePartToMagnet(targetPart, magnetCF) then
-                movedTargets += 1
+                local targetPart = getTargetPart(enemy)
+                if movePartToMagnet(targetPart, enemyMagnetCF) then
+                    movedTargets += 1
+                end
             end
         end
     end
 
-    local debrisFolder = getDebrisFolder()
-    if debrisFolder then
-        local movedLoot = 0
+    local lootMagnetCF = getLootCollectCFrame()
+    if lootMagnetCF then
+        local debrisFolder = getDebrisFolder()
+        if debrisFolder then
+            local movedLoot = 0
 
-        for _, instance in ipairs(debrisFolder:GetDescendants()) do
-            if movedLoot >= SETTINGS.MaxLootPerFrame then
-                break
-            end
+            for _, instance in ipairs(debrisFolder:GetDescendants()) do
+                if movedLoot >= SETTINGS.MaxLootPerFrame then
+                    break
+                end
 
-            if instance:IsA("MeshPart") and instance.Name == SETTINGS.LootSackName then
-                if movePartToMagnet(instance, magnetCF) then
-                    movedLoot += 1
+                if instance:IsA("MeshPart") and instance.Name == SETTINGS.LootSackName then
+                    if movePartToMagnet(instance, lootMagnetCF) then
+                        movedLoot += 1
+                    end
                 end
             end
         end
