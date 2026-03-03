@@ -113,7 +113,8 @@ local selectedPlayer = nil
 local aimEnabled = false
 local renderConnection = nil
 local teleportToCrosshair = false
-local teleportDistance = 3
+local teleportDistance = 10
+local minSafeDistanceFromPlayer = 6
 local lastTargetPart = nil
 local lastTargetCFrame = nil
 
@@ -125,6 +126,16 @@ local function getTargetPart(player)
     return player.Character:FindFirstChild("HumanoidRootPart")
         or player.Character:FindFirstChild("UpperTorso")
         or player.Character:FindFirstChild("Head")
+end
+
+local function getLocalRootPart()
+    if not localPlayer.Character then
+        return nil
+    end
+
+    return localPlayer.Character:FindFirstChild("HumanoidRootPart")
+        or localPlayer.Character:FindFirstChild("UpperTorso")
+        or localPlayer.Character:FindFirstChild("Head")
 end
 
 local function updateStatus()
@@ -213,7 +224,15 @@ local function startAimLoop()
         camera.CFrame = CFrame.new(camPos, part.Position)
 
         if teleportToCrosshair then
-            local targetPos = camPos + (camera.CFrame.LookVector * teleportDistance)
+            local localRoot = getLocalRootPart()
+            local safeDistance = teleportDistance
+
+            if localRoot then
+                local cameraToPlayer = (camPos - localRoot.Position).Magnitude
+                safeDistance = math.max(safeDistance, cameraToPlayer + minSafeDistanceFromPlayer)
+            end
+
+            local targetPos = camPos + (camera.CFrame.LookVector * safeDistance)
             if part ~= lastTargetPart then
                 restoreLastTeleportedPart()
                 lastTargetPart = part
