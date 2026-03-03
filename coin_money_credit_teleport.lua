@@ -1,5 +1,5 @@
 -- Enemy magnet to crosshair (without HumanoidCollider)
--- Targets model root parts first: HumanoidRootPart / PrimaryPart / Head.
+-- Targets enemy root parts and loot sacks.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -13,18 +13,33 @@ local SETTINGS = {
     Enabled = true,
     ToggleKey = Enum.KeyCode.T,
     DistanceFromCamera = 8, -- studs in front of crosshair
-    DistanceFromCharacter = 16, -- keep enemies farther from your character
+    DistanceFromCharacter = 21, -- keep targets farther from your character
     MaxTargetsPerFrame = 100,
+    MaxLootPerFrame = 100,
     PreferredPartNames = { "HumanoidRootPart", "Head", "Torso", "UpperTorso", "LowerTorso" },
+    LootSackName = "Meshes/LootsackLP",
 }
 
+local function getGameFolder()
+    return Workspace:FindFirstChild("Game")
+end
+
 local function getEnemiesFolder()
-    local gameFolder = Workspace:FindFirstChild("Game")
+    local gameFolder = getGameFolder()
     if not gameFolder then
         return nil
     end
 
     return gameFolder:FindFirstChild("Enemies")
+end
+
+local function getDebrisFolder()
+    local gameFolder = getGameFolder()
+    if not gameFolder then
+        return nil
+    end
+
+    return gameFolder:FindFirstChild("Debris")
 end
 
 local function getCharacterRootPart()
@@ -80,8 +95,21 @@ local function getMagnetCFrame()
         targetPos = charTarget
     end
 
-    -- Face enemies toward the player/camera so they stand "front-first".
+    -- Face targets toward the player/camera so they stand "front-first".
     return CFrame.new(targetPos, targetPos - lookVector)
+end
+
+local function movePartToMagnet(part, magnetCF)
+    if not part or not part:IsA("BasePart") then
+        return false
+    end
+
+    part.CanCollide = false
+    part.AssemblyLinearVelocity = Vector3.zero
+    part.AssemblyAngularVelocity = Vector3.zero
+    part.CFrame = magnetCF
+
+    return true
 end
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
@@ -100,30 +128,41 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
-    local enemiesFolder = getEnemiesFolder()
-    if not enemiesFolder then
-        return
-    end
-
     local magnetCF = getMagnetCFrame()
     if not magnetCF then
         return
     end
 
-    local moved = 0
+    local enemiesFolder = getEnemiesFolder()
+    if enemiesFolder then
+        local movedTargets = 0
 
-    for _, enemy in ipairs(enemiesFolder:GetChildren()) do
-        if moved >= SETTINGS.MaxTargetsPerFrame then
-            break
+        for _, enemy in ipairs(enemiesFolder:GetChildren()) do
+            if movedTargets >= SETTINGS.MaxTargetsPerFrame then
+                break
+            end
+
+            local targetPart = getTargetPart(enemy)
+            if movePartToMagnet(targetPart, magnetCF) then
+                movedTargets += 1
+            end
         end
+    end
 
-        local targetPart = getTargetPart(enemy)
-        if targetPart then
-            targetPart.CanCollide = false
-            targetPart.AssemblyLinearVelocity = Vector3.zero
-            targetPart.AssemblyAngularVelocity = Vector3.zero
-            targetPart.CFrame = magnetCF
-            moved += 1
+    local debrisFolder = getDebrisFolder()
+    if debrisFolder then
+        local movedLoot = 0
+
+        for _, instance in ipairs(debrisFolder:GetDescendants()) do
+            if movedLoot >= SETTINGS.MaxLootPerFrame then
+                break
+            end
+
+            if instance:IsA("MeshPart") and instance.Name == SETTINGS.LootSackName then
+                if movePartToMagnet(instance, magnetCF) then
+                    movedLoot += 1
+                end
+            end
         end
     end
 end)
