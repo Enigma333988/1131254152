@@ -113,8 +113,8 @@ local selectedPlayer = nil
 local aimEnabled = false
 local renderConnection = nil
 local teleportToCrosshair = false
-local teleportDistance = 10
-local minSafeDistanceFromPlayer = 6
+local teleportDistance = 20
+local minSafeDistanceFromPlayer = 15
 local lastTargetPart = nil
 local lastTargetCFrame = nil
 
@@ -221,30 +221,34 @@ local function startAimLoop()
         end
 
         local camPos = camera.CFrame.Position
-        camera.CFrame = CFrame.new(camPos, part.Position)
 
         if teleportToCrosshair then
             local localRoot = getLocalRootPart()
             local safeDistance = teleportDistance
 
-            if localRoot then
-                local cameraToPlayer = (camPos - localRoot.Position).Magnitude
-                safeDistance = math.max(safeDistance, cameraToPlayer + minSafeDistanceFromPlayer)
-            end
+            local lookVector = camera.CFrame.LookVector
+            local targetPos = camPos + (lookVector * safeDistance)
 
-            local targetPos = camPos + (camera.CFrame.LookVector * safeDistance)
+            if localRoot then
+                local toLocal = targetPos - localRoot.Position
+                local localDistance = toLocal.Magnitude
+                if localDistance < minSafeDistanceFromPlayer then
+                    targetPos = localRoot.Position + (lookVector * minSafeDistanceFromPlayer)
+                end
+            end
             if part ~= lastTargetPart then
                 restoreLastTeleportedPart()
                 lastTargetPart = part
                 lastTargetCFrame = part.CFrame
             end
 
-            part.CFrame = CFrame.new(targetPos, camPos)
+            part.CFrame = CFrame.new(targetPos, targetPos + camera.CFrame.LookVector)
             if part:IsA("BasePart") then
                 part.AssemblyLinearVelocity = Vector3.zero
                 part.AssemblyAngularVelocity = Vector3.zero
             end
         else
+            camera.CFrame = CFrame.new(camPos, part.Position)
             restoreLastTeleportedPart()
         end
     end)
