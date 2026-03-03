@@ -2,12 +2,14 @@
 -- Targets model root parts first: HumanoidRootPart / PrimaryPart / Head.
 
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local camera = Workspace.CurrentCamera
 
 local SETTINGS = {
     Enabled = true,
+    ToggleKey = Enum.KeyCode.T,
     DistanceFromCamera = 8, -- studs in front of crosshair
     MaxTargetsPerFrame = 100,
     PreferredPartNames = { "HumanoidRootPart", "Head", "Torso", "UpperTorso", "LowerTorso" },
@@ -50,9 +52,23 @@ local function getMagnetCFrame()
         return nil
     end
 
-    local targetPos = camera.CFrame.Position + (camera.CFrame.LookVector * SETTINGS.DistanceFromCamera)
-    return CFrame.new(targetPos, targetPos + camera.CFrame.LookVector)
+    local lookVector = camera.CFrame.LookVector
+    local targetPos = camera.CFrame.Position + (lookVector * SETTINGS.DistanceFromCamera)
+
+    -- Face enemies toward the player/camera so they stand "front-first".
+    return CFrame.new(targetPos, targetPos - lookVector)
 end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then
+        return
+    end
+
+    if input.KeyCode == SETTINGS.ToggleKey then
+        SETTINGS.Enabled = not SETTINGS.Enabled
+        print(string.format("[enemy-magnet] %s", SETTINGS.Enabled and "ENABLED" or "DISABLED"))
+    end
+end)
 
 RunService.RenderStepped:Connect(function()
     if not SETTINGS.Enabled then
