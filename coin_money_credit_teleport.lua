@@ -1,60 +1,88 @@
+-- Enemy magnet to crosshair (without HumanoidCollider)
+-- Targets model root parts first: HumanoidRootPart / PrimaryPart / Head.
 
-local MAX_TARGET_DISTANCE = 250
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 
-local function getEnemyRoot()
-	local zombies = workspace:FindFirstChild("Zombies")
-	if zombies then
-		return zombies
-	end
+local camera = Workspace.CurrentCamera
 
-	return workspace:FindFirstChild("Monsters")
+local SETTINGS = {
+    Enabled = true,
+    DistanceFromCamera = 8, -- studs in front of crosshair
+    MaxTargetsPerFrame = 100,
+    PreferredPartNames = { "HumanoidRootPart", "Head", "Torso", "UpperTorso", "LowerTorso" },
+}
+
+local function getEnemiesFolder()
+    local gameFolder = Workspace:FindFirstChild("Game")
+    if not gameFolder then
+        return nil
+    end
+
+    return gameFolder:FindFirstChild("Enemies")
 end
 
-local function getCharacterHead()
-	local camera = workspace.CurrentCamera
-	if not camera then
-		return nil
-	end
+local function getTargetPart(enemyModel)
+    if not enemyModel or not enemyModel:IsA("Model") then
+        return nil
+    end
 
-	local root = getEnemyRoot()
-	if not root then
-		return nil
-	end
+    for _, partName in ipairs(SETTINGS.PreferredPartNames) do
+        local part = enemyModel:FindFirstChild(partName)
+        if part and part:IsA("BasePart") then
+            return part
+        end
+    end
 
-	local bestHead = nil
-	local bestDistance = math.huge
-	local cameraPos = camera.CFrame.Position
+    if enemyModel.PrimaryPart and enemyModel.PrimaryPart:IsA("BasePart") then
+        return enemyModel.PrimaryPart
+    end
 
-	for _, descendant in ipairs(root:GetDescendants()) do
-		if descendant:IsA("BasePart") and descendant.Name == "Head" and descendant.Parent then
-			local distance = (descendant.Position - cameraPos).Magnitude
-			if distance < bestDistance and distance <= MAX_TARGET_DISTANCE then
-				bestDistance = distance
-				bestHead = descendant
-			end
-		end
-	end
-
-	return bestHead
+    return enemyModel:FindFirstChildWhichIsA("BasePart")
 end
 
-local function applyAimbot()
-	local camera = workspace.CurrentCamera
-	if not camera then
-		return
-	end
+local function getMagnetCFrame()
+    if not camera then
+        camera = Workspace.CurrentCamera
+    end
 
-	local targetHead = getCharacterHead()
-	if not targetHead then
-		return
-	end
+    if not camera then
+        return nil
+    end
 
-	camera.CFrame = CFrame.new(camera.CFrame.Position, targetHead.Position)
+    local targetPos = camera.CFrame.Position + (camera.CFrame.LookVector * SETTINGS.DistanceFromCamera)
+    return CFrame.new(targetPos, targetPos + camera.CFrame.LookVector)
 end
 
 RunService.RenderStepped:Connect(function()
-	local ok = pcall(applyAimbot)
-	if not ok then
-		-- silence runtime overlay spam
-	end
+    if not SETTINGS.Enabled then
+        return
+    end
+
+    local enemiesFolder = getEnemiesFolder()
+    if not enemiesFolder then
+        return
+    end
+
+    local magnetCF = getMagnetCFrame()
+    if not magnetCF then
+        return
+    end
+
+    local moved = 0
+
+    for _, enemy in ipairs(enemiesFolder:GetChildren()) do
+        if moved >= SETTINGS.MaxTargetsPerFrame then
+            break
+        end
+
+        local targetPart = getTargetPart(enemy)
+        if targetPart then
+            targetPart.CanCollide = false
+            targetPart.AssemblyLinearVelocity = Vector3.zero
+            targetPart.AssemblyAngularVelocity = Vector3.zero
+            targetPart.CFrame = magnetCF
+            moved += 1
+        end
+    end
 end)
