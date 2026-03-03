@@ -1,8 +1,5 @@
--- Подсветка только "правильных" стёкол.
--- Условие: у Part должны быть РОВНО 2 прямых дочерних объекта:
---   1) GlassGreenEffectScript (Script)
---   2) TouchInterest (TouchTransmitter)
--- И НЕ должно быть вариантов вроде GlassDamageScript.
+-- Подсветка "правильных" стёкол в Workspace.
+-- Ключевое условие: НЕ подсвечивать детали с GlassDamageScript.
 
 local Workspace = game:GetService("Workspace")
 
@@ -17,34 +14,24 @@ if not highlightFolder then
     highlightFolder.Parent = Workspace
 end
 
+local function hasChildOfType(parent, childName, className)
+    local child = parent:FindFirstChild(childName)
+    return child ~= nil and child.ClassName == className
+end
+
 local function isValidGlass(part)
     if not part:IsA("BasePart") then
         return false
     end
 
-    -- Имя обычно "Glass1", "Glass2" и т.д.
-    if not part.Name:match("^Glass%d+$") then
+    -- Если есть DamageScript — это НЕ то стекло, сразу исключаем.
+    if part:FindFirstChild("GlassDamageScript") then
         return false
     end
 
-    local children = part:GetChildren()
-    if #children ~= 2 then
-        return false
-    end
-
-    local hasGreenEffectScript = false
-    local hasTouchInterest = false
-
-    for _, child in ipairs(children) do
-        if child.Name == "GlassGreenEffectScript" and child.ClassName == "Script" then
-            hasGreenEffectScript = true
-        elseif child.Name == "TouchInterest" and child.ClassName == "TouchTransmitter" then
-            hasTouchInterest = true
-        else
-            -- Любой лишний/другой ребёнок (например GlassDamageScript) не подходит.
-            return false
-        end
-    end
+    -- Нужные признаки "правильного" стекла.
+    local hasGreenEffectScript = hasChildOfType(part, "GlassGreenEffectScript", "Script")
+    local hasTouchInterest = hasChildOfType(part, "TouchInterest", "TouchTransmitter")
 
     return hasGreenEffectScript and hasTouchInterest
 end
@@ -55,9 +42,10 @@ local function clearHighlights()
     end
 end
 
-local function highlightPart(part)
+local function highlightPart(part, index)
     local h = Instance.new("Highlight")
-    h.Name = "HL_" .. part:GetDebugId(0)
+    -- Не используем GetDebugId (может быть недоступен в обычном скрипте).
+    h.Name = "HL_" .. tostring(index)
     h.Adornee = part
     h.FillColor = HIGHLIGHT_COLOR
     h.FillTransparency = HIGHLIGHT_FILL_TRANSPARENCY
@@ -69,9 +57,11 @@ end
 local function refreshGlassHighlights()
     clearHighlights()
 
+    local index = 0
     for _, obj in ipairs(Workspace:GetDescendants()) do
         if isValidGlass(obj) then
-            highlightPart(obj)
+            index = index + 1
+            highlightPart(obj, index)
         end
     end
 end
