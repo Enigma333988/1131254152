@@ -1,4 +1,3 @@
-local RunService = game:GetService("RunService")
 
 local MAX_TARGET_DISTANCE = 250
 
