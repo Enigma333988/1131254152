@@ -1,9 +1,10 @@
 --[[
     Roblox LocalScript / executor script
-    Aim-assist UI:
+    Aim-assist + local target teleport UI:
       - Select any online player
       - Toggle aim lock on/off
       - Camera will keep looking at selected target's HumanoidRootPart
+      - Optional local teleport mode: moves target part in front of your crosshair locally
 
     Notes:
       - Intended for educational/demo use.
@@ -30,8 +31,8 @@ gui.Parent = playerGui
 
 local frame = Instance.new("Frame")
 frame.Name = "Main"
-frame.Size = UDim2.fromOffset(300, 210)
-frame.Position = UDim2.new(0, 20, 0.5, -105)
+frame.Size = UDim2.fromOffset(300, 250)
+frame.Position = UDim2.new(0, 20, 0.5, -125)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 frame.BorderSizePixel = 0
 frame.Parent = gui
@@ -80,7 +81,7 @@ listLayout.Parent = scrolling
 
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(1, -24, 0, 34)
-toggleButton.Position = UDim2.new(0, 12, 1, -42)
+toggleButton.Position = UDim2.new(0, 12, 1, -82)
 toggleButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.Font = Enum.Font.GothamBold
@@ -93,9 +94,28 @@ local toggleCorner = Instance.new("UICorner")
 toggleCorner.CornerRadius = UDim.new(0, 6)
 toggleCorner.Parent = toggleButton
 
+local modeButton = Instance.new("TextButton")
+modeButton.Size = UDim2.new(1, -24, 0, 30)
+modeButton.Position = UDim2.new(0, 12, 1, -42)
+modeButton.BackgroundColor3 = Color3.fromRGB(52, 86, 150)
+modeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+modeButton.Font = Enum.Font.Gotham
+modeButton.TextSize = 13
+modeButton.Text = "Mode: LOOK LOCK"
+modeButton.AutoButtonColor = true
+modeButton.Parent = frame
+
+local modeCorner = Instance.new("UICorner")
+modeCorner.CornerRadius = UDim.new(0, 6)
+modeCorner.Parent = modeButton
+
 local selectedPlayer = nil
 local aimEnabled = false
 local renderConnection = nil
+local teleportToCrosshair = false
+local teleportDistance = 3
+local lastTargetPart = nil
+local lastTargetCFrame = nil
 
 local function getTargetPart(player)
     if not player or not player.Character then
@@ -110,9 +130,20 @@ end
 local function updateStatus()
     local targetName = selectedPlayer and selectedPlayer.Name or "none"
     local state = aimEnabled and "ON" or "OFF"
-    statusLabel.Text = string.format("Target: %s | Aim: %s", targetName, state)
+    local mode = teleportToCrosshair and "TP CROSSHAIR" or "LOOK LOCK"
+    statusLabel.Text = string.format("Target: %s | Aim: %s | %s", targetName, state, mode)
     toggleButton.Text = "Aim: " .. state
     toggleButton.BackgroundColor3 = aimEnabled and Color3.fromRGB(44, 140, 72) or Color3.fromRGB(70, 70, 70)
+    modeButton.Text = "Mode: " .. mode
+    modeButton.BackgroundColor3 = teleportToCrosshair and Color3.fromRGB(143, 64, 45) or Color3.fromRGB(52, 86, 150)
+end
+
+local function restoreLastTeleportedPart()
+    if lastTargetPart and lastTargetPart.Parent and lastTargetCFrame then
+        lastTargetPart.CFrame = lastTargetCFrame
+    end
+    lastTargetPart = nil
+    lastTargetCFrame = nil
 end
 
 local function clearButtons()
@@ -180,6 +211,23 @@ local function startAimLoop()
 
         local camPos = camera.CFrame.Position
         camera.CFrame = CFrame.new(camPos, part.Position)
+
+        if teleportToCrosshair then
+            local targetPos = camPos + (camera.CFrame.LookVector * teleportDistance)
+            if part ~= lastTargetPart then
+                restoreLastTeleportedPart()
+                lastTargetPart = part
+                lastTargetCFrame = part.CFrame
+            end
+
+            part.CFrame = CFrame.new(targetPos, camPos)
+            if part:IsA("BasePart") then
+                part.AssemblyLinearVelocity = Vector3.zero
+                part.AssemblyAngularVelocity = Vector3.zero
+            end
+        else
+            restoreLastTeleportedPart()
+        end
     end)
 end
 
@@ -188,7 +236,16 @@ local function stopAimLoop()
         renderConnection:Disconnect()
         renderConnection = nil
     end
+    restoreLastTeleportedPart()
 end
+
+modeButton.MouseButton1Click:Connect(function()
+    teleportToCrosshair = not teleportToCrosshair
+    if not teleportToCrosshair then
+        restoreLastTeleportedPart()
+    end
+    updateStatus()
+end)
 
 toggleButton.MouseButton1Click:Connect(function()
     if not selectedPlayer then
