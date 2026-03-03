@@ -1,16 +1,19 @@
 -- Enemy magnet to crosshair (without HumanoidCollider)
 -- Targets model root parts first: HumanoidRootPart / PrimaryPart / Head.
 
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
+local LocalPlayer = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 
 local SETTINGS = {
     Enabled = true,
     ToggleKey = Enum.KeyCode.T,
     DistanceFromCamera = 8, -- studs in front of crosshair
+    DistanceFromCharacter = 16, -- keep enemies farther from your character
     MaxTargetsPerFrame = 100,
     PreferredPartNames = { "HumanoidRootPart", "Head", "Torso", "UpperTorso", "LowerTorso" },
 }
@@ -22,6 +25,20 @@ local function getEnemiesFolder()
     end
 
     return gameFolder:FindFirstChild("Enemies")
+end
+
+local function getCharacterRootPart()
+    local character = LocalPlayer and LocalPlayer.Character
+    if not character then
+        return nil
+    end
+
+    local root = character:FindFirstChild("HumanoidRootPart")
+    if root and root:IsA("BasePart") then
+        return root
+    end
+
+    return nil
 end
 
 local function getTargetPart(enemyModel)
@@ -53,7 +70,15 @@ local function getMagnetCFrame()
     end
 
     local lookVector = camera.CFrame.LookVector
-    local targetPos = camera.CFrame.Position + (lookVector * SETTINGS.DistanceFromCamera)
+    local camTarget = camera.CFrame.Position + (lookVector * SETTINGS.DistanceFromCamera)
+
+    local rootPart = getCharacterRootPart()
+    local targetPos = camTarget
+
+    if rootPart then
+        local charTarget = rootPart.Position + (lookVector * SETTINGS.DistanceFromCharacter)
+        targetPos = charTarget
+    end
 
     -- Face enemies toward the player/camera so they stand "front-first".
     return CFrame.new(targetPos, targetPos - lookVector)
