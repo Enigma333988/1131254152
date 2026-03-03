@@ -12,8 +12,9 @@ local camera = Workspace.CurrentCamera
 local SETTINGS = {
     Enabled = true,
     ToggleKey = Enum.KeyCode.T,
-    DistanceFromCamera = 16, -- studs in front of crosshair
-    DistanceFromCharacter = 21, -- keep enemy targets farther from your character
+    DistanceFromCamera = 8, -- studs in front of crosshair
+    DistanceFromCharacter = 16, -- keep enemy targets farther from your character
+    EnemyVerticalOffset = 2.5, -- place enemies a bit higher in crosshair
     LootOffsetFromCharacter = Vector3.new(0, 0, 0), -- teleport loot into/near character body
     MaxTargetsPerFrame = 100,
     MaxLootPerFrame = 100,
@@ -95,6 +96,8 @@ local function getEnemyMagnetCFrame()
         local charTarget = rootPart.Position + (lookVector * SETTINGS.DistanceFromCharacter)
         targetPos = charTarget
     end
+
+    targetPos = targetPos + Vector3.new(0, SETTINGS.EnemyVerticalOffset, 0)
 
     -- Face enemy targets toward the player/camera so they stand "front-first".
     return CFrame.new(targetPos, targetPos - lookVector)
