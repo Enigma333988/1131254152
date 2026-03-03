@@ -1,12 +1,12 @@
--- Телепортирует головы/корневые части монстров в точку прицела (мыши)
--- Подходит для моделей с "Head" (MeshPart/Part) и/или "HumanoidRootPart"
+-- Телепортирует только тело (HumanoidRootPart) самого близкого врага в точку прицела
+-- Каждый тик пересчитывает ближайшую цель к вашему персонажу
 
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 local mouse = localPlayer:GetMouse()
 
-local TELEPORT_INTERVAL = 0.15
-local HEIGHT_OFFSET = 2
+local TELEPORT_INTERVAL = 0.08
+local HEIGHT_OFFSET = 1.5
 
 local function getAimPosition()
     if mouse and mouse.Hit then
@@ -15,27 +15,13 @@ local function getAimPosition()
     return nil
 end
 
-local function isMonsterModel(model)
-    if not model:IsA("Model") then
-        return false
+local function getCharacterRootPart()
+    local character = localPlayer.Character
+    if not character then
+        return nil
     end
 
-    -- Исключаем своего персонажа
-    if localPlayer.Character and model == localPlayer.Character then
-        return false
-    end
-
-    -- Простая эвристика: есть "Head" или "HumanoidRootPart"
-    return model:FindFirstChild("Head") ~= nil or model:FindFirstChild("HumanoidRootPart") ~= nil
-end
-
-local function getTeleportPart(model)
-    local head = model:FindFirstChild("Head")
-    if head and head:IsA("BasePart") then
-        return head
-    end
-
-    local root = model:FindFirstChild("HumanoidRootPart")
+    local root = character:FindFirstChild("HumanoidRootPart")
     if root and root:IsA("BasePart") then
         return root
     end
@@ -43,25 +29,61 @@ local function getTeleportPart(model)
     return nil
 end
 
-local function teleportMonstersToCrosshair()
+local function isMonsterModel(model)
+    if not model:IsA("Model") then
+        return false
+    end
+
+    if localPlayer.Character and model == localPlayer.Character then
+        return false
+    end
+
+    local root = model:FindFirstChild("HumanoidRootPart")
+    return root ~= nil and root:IsA("BasePart")
+end
+
+local function findNearestMonsterRoot()
+    local playerRoot = getCharacterRootPart()
+    if not playerRoot then
+        return nil
+    end
+
+    local nearestRoot = nil
+    local nearestDistance = math.huge
+
+    for _, instance in ipairs(workspace:GetChildren()) do
+        if isMonsterModel(instance) then
+            local monsterRoot = instance:FindFirstChild("HumanoidRootPart")
+            if monsterRoot and monsterRoot:IsA("BasePart") then
+                local distance = (monsterRoot.Position - playerRoot.Position).Magnitude
+                if distance < nearestDistance then
+                    nearestDistance = distance
+                    nearestRoot = monsterRoot
+                end
+            end
+        end
+    end
+
+    return nearestRoot
+end
+
+local function teleportNearestMonsterToCrosshair()
     local aimPos = getAimPosition()
     if not aimPos then
         return
     end
 
-    for _, instance in ipairs(workspace:GetChildren()) do
-        if isMonsterModel(instance) then
-            local part = getTeleportPart(instance)
-            if part then
-                part.CFrame = CFrame.new(aimPos + Vector3.new(0, HEIGHT_OFFSET, 0))
-                part.AssemblyLinearVelocity = Vector3.zero
-                part.AssemblyAngularVelocity = Vector3.zero
-            end
-        end
+    local nearestMonsterRoot = findNearestMonsterRoot()
+    if not nearestMonsterRoot then
+        return
     end
+
+    nearestMonsterRoot.CFrame = CFrame.new(aimPos + Vector3.new(0, HEIGHT_OFFSET, 0))
+    nearestMonsterRoot.AssemblyLinearVelocity = Vector3.zero
+    nearestMonsterRoot.AssemblyAngularVelocity = Vector3.zero
 end
 
 while true do
-    teleportMonstersToCrosshair()
+    teleportNearestMonsterToCrosshair()
     task.wait(TELEPORT_INTERVAL)
 end
