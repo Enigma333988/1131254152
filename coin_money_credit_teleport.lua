@@ -7,7 +7,7 @@ local PLAYER_GUI = LOCAL_PLAYER:WaitForChild("PlayerGui")
 
 local ROOT_PATH = { "Debris", "Skills" }
 
-local TELEPORT_OFFSET = Vector3.new(0, 3, 0)
+local TELEPORT_HEIGHT = 25
 local BUTTON_TEXT = "Телепорт к ближайшему скиллу"
 
 local ESP_HIGHLIGHT_FILL_COLOR = Color3.fromRGB(255, 200, 0)
@@ -87,7 +87,7 @@ local function teleportToSkill(skill)
         return
     end
 
-    rootPart.CFrame = CFrame.new(skillPart.Position + TELEPORT_OFFSET)
+    rootPart.CFrame = CFrame.new(skillPart.Position + Vector3.new(0, TELEPORT_HEIGHT, 0))
 end
 
 local function createEspForSkill(skill)
