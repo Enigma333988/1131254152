@@ -1,4 +1,4 @@
--- Locks camera aim to heads inside a configurable crosshair capture radius while LMB is held.
+-- Locks camera aim to heads inside a configurable crosshair capture radius while RMB is held.
 -- LocalScript only.
 
 local Players = game:GetService("Players")
@@ -48,29 +48,6 @@ local function getHead(character)
     end
 
     return character:FindFirstChild("Head")
-end
-
-local function hasLineOfSight(head)
-    local myCharacter = getCharacter(LocalPlayer)
-    local myHead = myCharacter and getHead(myCharacter)
-
-    if not myHead or not head then
-        return false
-    end
-
-    local direction = head.Position - myHead.Position
-
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Blacklist
-    params.FilterDescendantsInstances = { myCharacter }
-
-    local hit = Workspace:Raycast(myHead.Position, direction, params)
-
-    if not hit then
-        return true
-    end
-
-    return hit.Instance and hit.Instance:IsDescendantOf(head.Parent)
 end
 
 local screenGui = Instance.new("ScreenGui")
@@ -222,6 +199,9 @@ end)
 UserInputService.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         draggingSlider = false
+    end
+
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
         isHoldingLMB = false
     end
 end)
@@ -242,10 +222,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
         return
     end
 
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        if not draggingSlider then
-            isHoldingLMB = true
-        end
+    if input.UserInputType == Enum.UserInputType.MouseButton2 then
+        isHoldingLMB = true
     end
 end)
 
@@ -268,7 +246,7 @@ local function getClosestHeadInCircle()
             local character = getCharacter(player)
             local head = getHead(character)
 
-            if head and isAlive(character) and hasLineOfSight(head) then
+            if head and isAlive(character) then
                 local headScreenPoint, isOnScreen = camera:WorldToViewportPoint(head.Position)
 
                 if isOnScreen and headScreenPoint.Z > 0 then
