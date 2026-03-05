@@ -1,5 +1,5 @@
--- Locks the camera aim to the visible enemy head closest to the crosshair while LMB is held.
--- Works on the local client.
+-- Locks camera aim to the visible enemy head closest to the crosshair while LMB is held.
+-- LocalScript only.
 
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
@@ -7,9 +7,12 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local LocalPlayer = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
 
 local isHoldingLMB = false
+
+local function getCurrentCamera()
+    return Workspace.CurrentCamera
+end
 
 local function isAlive(character)
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -46,91 +49,74 @@ local function colorToKey(color3)
         return nil
     end
 
-    local r = math.floor(color3.R * 255 + 0.5)
-    local g = math.floor(color3.G * 255 + 0.5)
-    local b = math.floor(color3.B * 255 + 0.5)
-    return string.format("rgb:%d,%d,%d", r, g, b)
+    return string.format(
+        "rgb:%d,%d,%d",
+        math.floor(color3.R * 255 + 0.5),
+        math.floor(color3.G * 255 + 0.5),
+        math.floor(color3.B * 255 + 0.5)
+    )
 end
 
-local function addMarker(markers, marker)
-    if marker and marker ~= "" then
-        markers[marker] = true
+local function readStringValue(container, key)
+    if not container then
+        return nil
     end
+
+    local valueObject = container:FindFirstChild(key)
+    if valueObject and valueObject:IsA("StringValue") and valueObject.Value ~= "" then
+        return valueObject.Value
+    end
+
+    return nil
 end
 
-local function getTeamMarkers(player, character)
-    local markers = {}
-
-    if player.Team then
-        addMarker(markers, "team:" .. player.Team.Name)
+local function readTeamSignature(player, character)
+    if player and player.Team then
+        return "team:" .. player.Team.Name
     end
 
-    if player.TeamColor then
-        addMarker(markers, "teamColor:" .. tostring(player.TeamColor.Number))
+    if player and player.TeamColor then
+        return "teamColor:" .. tostring(player.TeamColor.Number)
+    end
+
+    local keys = { "Team", "TeamName", "Faction", "Side", "Clan" }
+
+    for _, key in ipairs(keys) do
+        if character then
+            local attr = character:GetAttribute(key)
+            if attr ~= nil and tostring(attr) ~= "" then
+                return key .. ":" .. tostring(attr)
+            end
+        end
+
+        local strValue = readStringValue(character, key)
+        if strValue then
+            return key .. ":" .. strValue
+        end
+
+        local playerAttr = player and player:GetAttribute(key)
+        if playerAttr ~= nil and tostring(playerAttr) ~= "" then
+            return "player" .. key .. ":" .. tostring(playerAttr)
+        end
+
+        local playerStrValue = readStringValue(player, key)
+        if playerStrValue then
+            return "player" .. key .. ":" .. playerStrValue
+        end
     end
 
     if character then
-        local attributeKeys = {
-            "Team",
-            "TeamName",
-            "TeamColor",
-            "Faction",
-            "Side",
-            "Clan",
-        }
-
-        for _, key in ipairs(attributeKeys) do
-            local value = character:GetAttribute(key)
-            if value ~= nil then
-                addMarker(markers, key .. ":" .. tostring(value))
-            end
-        end
-
-        local valueObjectKeys = {
-            "Team",
-            "TeamName",
-            "Faction",
-            "Side",
-            "Clan",
-        }
-
-        for _, key in ipairs(valueObjectKeys) do
-            local valueObject = character:FindFirstChild(key)
-            if valueObject and valueObject:IsA("StringValue") then
-                addMarker(markers, key .. ":" .. valueObject.Value)
-            end
-        end
-
         local nameTag = character:FindFirstChild("NameTag", true)
         if nameTag and nameTag:IsA("BillboardGui") then
             for _, descendant in ipairs(nameTag:GetDescendants()) do
                 if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
-                    addMarker(markers, "nameTagColor:" .. colorToKey(descendant.TextColor3))
-                    break
+                    return "nameTagColor:" .. tostring(colorToKey(descendant.TextColor3))
                 end
             end
         end
     end
 
-    return markers
-end
-
-local function hasSharedMarker(markersA, markersB)
-    for marker in pairs(markersA) do
-        if markersB[marker] then
-            return true
-        end
-    end
-
-    return false
-end
-
-local function hasAnyMarker(markers)
-    for _ in pairs(markers) do
-        return true
-    end
-
-    return false
+    return nil
 end
 
 local function hasLineOfSight(head)
@@ -164,24 +150,26 @@ local function isEnemy(player)
     local myCharacter = getCharacter(LocalPlayer)
     local targetCharacter = getCharacter(player)
 
-    local myMarkers = getTeamMarkers(LocalPlayer, myCharacter)
-    local targetMarkers = getTeamMarkers(player, targetCharacter)
+    local mySignature = readTeamSignature(LocalPlayer, myCharacter)
+    local targetSignature = readTeamSignature(player, targetCharacter)
 
-    if hasAnyMarker(myMarkers) and hasAnyMarker(targetMarkers) then
-        return not hasSharedMarker(myMarkers, targetMarkers)
+    if mySignature and targetSignature then
+        return mySignature ~= targetSignature
     end
 
-    -- Safe fallback: if team cannot be determined, do not target.
+    -- If team data is unknown, don't lock to avoid shooting teammates.
     return false
 end
 
 local function getClosestToCrosshairHead()
+    local camera = getCurrentCamera()
     local myCharacter = getCharacter(LocalPlayer)
-    if not myCharacter or not isAlive(myCharacter) then
+
+    if not camera or not myCharacter or not isAlive(myCharacter) then
         return nil
     end
 
-    local viewportSize = Camera.ViewportSize
+    local viewportSize = camera.ViewportSize
     local crosshair = Vector2.new(viewportSize.X * 0.5, viewportSize.Y * 0.5)
 
     local nearestHead = nil
@@ -193,7 +181,7 @@ local function getClosestToCrosshairHead()
             local head = getHead(character)
 
             if head and isAlive(character) and hasLineOfSight(head) then
-                local headScreenPoint, isOnScreen = Camera:WorldToViewportPoint(head.Position)
+                local headScreenPoint, isOnScreen = camera:WorldToViewportPoint(head.Position)
 
                 if isOnScreen and headScreenPoint.Z > 0 then
                     local headPoint2D = Vector2.new(headScreenPoint.X, headScreenPoint.Y)
@@ -232,11 +220,16 @@ RunService.RenderStepped:Connect(function()
         return
     end
 
+    local camera = getCurrentCamera()
+    if not camera then
+        return
+    end
+
     local targetHead = getClosestToCrosshairHead()
     if not targetHead then
         return
     end
 
-    local cameraPosition = Camera.CFrame.Position
-    Camera.CFrame = CFrame.new(cameraPosition, targetHead.Position)
+    local cameraPosition = camera.CFrame.Position
+    camera.CFrame = CFrame.new(cameraPosition, targetHead.Position)
 end)
