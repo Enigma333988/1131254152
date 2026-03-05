@@ -1,4 +1,4 @@
--- Locks the camera aim to the visible player's head closest to the crosshair while LMB is held.
+-- Locks the camera aim to the visible enemy head closest to the crosshair while LMB is held.
 -- Works on the local client.
 
 local Players = game:GetService("Players")
@@ -16,6 +16,23 @@ local function isAlive(character)
     return humanoid and humanoid.Health > 0
 end
 
+local function getCharacter(player)
+    if not player then
+        return nil
+    end
+
+    if player.Character then
+        return player.Character
+    end
+
+    local playersFolder = Workspace:FindFirstChild("Players")
+    if playersFolder then
+        return playersFolder:FindFirstChild(player.Name)
+    end
+
+    return nil
+end
+
 local function getHead(character)
     if not character then
         return nil
@@ -24,8 +41,100 @@ local function getHead(character)
     return character:FindFirstChild("Head")
 end
 
+local function colorToKey(color3)
+    if not color3 then
+        return nil
+    end
+
+    local r = math.floor(color3.R * 255 + 0.5)
+    local g = math.floor(color3.G * 255 + 0.5)
+    local b = math.floor(color3.B * 255 + 0.5)
+    return string.format("rgb:%d,%d,%d", r, g, b)
+end
+
+local function addMarker(markers, marker)
+    if marker and marker ~= "" then
+        markers[marker] = true
+    end
+end
+
+local function getTeamMarkers(player, character)
+    local markers = {}
+
+    if player.Team then
+        addMarker(markers, "team:" .. player.Team.Name)
+    end
+
+    if player.TeamColor then
+        addMarker(markers, "teamColor:" .. tostring(player.TeamColor.Number))
+    end
+
+    if character then
+        local attributeKeys = {
+            "Team",
+            "TeamName",
+            "TeamColor",
+            "Faction",
+            "Side",
+            "Clan",
+        }
+
+        for _, key in ipairs(attributeKeys) do
+            local value = character:GetAttribute(key)
+            if value ~= nil then
+                addMarker(markers, key .. ":" .. tostring(value))
+            end
+        end
+
+        local valueObjectKeys = {
+            "Team",
+            "TeamName",
+            "Faction",
+            "Side",
+            "Clan",
+        }
+
+        for _, key in ipairs(valueObjectKeys) do
+            local valueObject = character:FindFirstChild(key)
+            if valueObject and valueObject:IsA("StringValue") then
+                addMarker(markers, key .. ":" .. valueObject.Value)
+            end
+        end
+
+        local nameTag = character:FindFirstChild("NameTag", true)
+        if nameTag and nameTag:IsA("BillboardGui") then
+            for _, descendant in ipairs(nameTag:GetDescendants()) do
+                if descendant:IsA("TextLabel") or descendant:IsA("TextButton") then
+                    addMarker(markers, "nameTagColor:" .. colorToKey(descendant.TextColor3))
+                    break
+                end
+            end
+        end
+    end
+
+    return markers
+end
+
+local function hasSharedMarker(markersA, markersB)
+    for marker in pairs(markersA) do
+        if markersB[marker] then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function hasAnyMarker(markers)
+    for _ in pairs(markers) do
+        return true
+    end
+
+    return false
+end
+
 local function hasLineOfSight(head)
-    local myCharacter = LocalPlayer.Character
+    local myCharacter = getCharacter(LocalPlayer)
     local myHead = myCharacter and getHead(myCharacter)
 
     if not myHead or not head then
@@ -52,19 +161,22 @@ local function isEnemy(player)
         return false
     end
 
-    if LocalPlayer.Neutral or player.Neutral then
-        return true
+    local myCharacter = getCharacter(LocalPlayer)
+    local targetCharacter = getCharacter(player)
+
+    local myMarkers = getTeamMarkers(LocalPlayer, myCharacter)
+    local targetMarkers = getTeamMarkers(player, targetCharacter)
+
+    if hasAnyMarker(myMarkers) and hasAnyMarker(targetMarkers) then
+        return not hasSharedMarker(myMarkers, targetMarkers)
     end
 
-    if LocalPlayer.Team and player.Team then
-        return LocalPlayer.Team ~= player.Team
-    end
-
-    return LocalPlayer.TeamColor ~= player.TeamColor
+    -- Safe fallback: if team cannot be determined, do not target.
+    return false
 end
 
 local function getClosestToCrosshairHead()
-    local myCharacter = LocalPlayer.Character
+    local myCharacter = getCharacter(LocalPlayer)
     if not myCharacter or not isAlive(myCharacter) then
         return nil
     end
@@ -77,7 +189,7 @@ local function getClosestToCrosshairHead()
 
     for _, player in ipairs(Players:GetPlayers()) do
         if isEnemy(player) then
-            local character = player.Character
+            local character = getCharacter(player)
             local head = getHead(character)
 
             if head and isAlive(character) and hasLineOfSight(head) then
