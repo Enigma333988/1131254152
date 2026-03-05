@@ -47,6 +47,22 @@ local function hasLineOfSight(head)
     return hit.Instance and hit.Instance:IsDescendantOf(head.Parent)
 end
 
+local function isEnemy(player)
+    if not player or player == LocalPlayer then
+        return false
+    end
+
+    if LocalPlayer.Neutral or player.Neutral then
+        return true
+    end
+
+    if LocalPlayer.Team and player.Team then
+        return LocalPlayer.Team ~= player.Team
+    end
+
+    return LocalPlayer.TeamColor ~= player.TeamColor
+end
+
 local function getClosestToCrosshairHead()
     local myCharacter = LocalPlayer.Character
     if not myCharacter or not isAlive(myCharacter) then
@@ -60,7 +76,7 @@ local function getClosestToCrosshairHead()
     local nearestScreenDistance = math.huge
 
     for _, player in ipairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer then
+        if isEnemy(player) then
             local character = player.Character
             local head = getHead(character)
 
